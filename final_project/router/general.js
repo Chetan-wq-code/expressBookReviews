@@ -3,6 +3,7 @@ let books = require("./booksdb.js");
 let isValid = require("./auth_users.js").isValid;
 let users = require("./auth_users.js").users;
 const public_users = express.Router();
+const axios = require('axios')
 
 
 public_users.post("/register", (req,res) => {
@@ -20,42 +21,87 @@ public_users.post("/register", (req,res) => {
 });
 
 // Get the book list available in the shop
-public_users.get('/',function (req, res) {
-  //Write your code here
-  return res.status(300).json(JSON.stringify(books, null, 4));
+public_users.get('/',async function (req, res) {
+  try{
+    const getBooks = new Promise((resolve, reject)=>{
+        if(books){
+            resolve(books)
+        }else{
+            reject(res.status(404).json({message:"Books not found"}))
+        }
+    })
+
+    const allBooks = await getBooks
+    return res.status(200).json(allBooks)
+  }catch(error){
+    return res.status(500).json({message:error.message})
+  }
+  
 });
 
 // Get book details based on ISBN
-public_users.get('/isbn/:isbn',function (req, res) {
-  let isbn = req.params.isbn
-  if(isbn){
-    res.send(books[isbn])
+
+public_users.get('/isbn/:isbn',async function (req, res) {
+    let isbn = req.params.isbn
+    if(isbn){
+        return res.status(200).send(books[isbn])
+    }else{
+        return res.status(404).json({message:"Book Not Found"})
+    }
+});
+
+public_users.get('/isbn/:isbn',async function (req, res) {
+  try{
+    let isbn = req.params.isbn
+    const response =await axios.get(`http://localhost:5000/isbn/${isbn}`)
+    return res.status(200).json(response.data)
+    
+  }catch(err){
+    return res.status(404).json({message:err.message})
   }
 
-    
-
-
-  return res.status(400).json({message: "Book not found"});
  });
+//  The first route (/isbn/:isbn) acts as the "Inventory Server" holding the database.
+// The second route (/async-isbn/:isbn) acts as the "User Server" using Axios to ask for the data over the network.
   
 // Get book details based on author
-public_users.get('/author/:author',function (req, res) {
-  let author = req.params.author
-  let bookKeys = Object.keys(books)
-  const matchedKeys = bookKeys.filter(key =>{
-    const book = books[key]
-    return book.author.toLowerCase() === author.toLowerCase()
-  })
+public_users.get('/author/:author', async function (req, res) {
+    try{
+        const author = req.params.author
+        const getBooks = new Promise((resolve, reject)=>{
+            let matchingBooks = []
+            for(let isbn in books){
+                if(books[isbn].author === author){
+                    matchingBooks.push({id:isbn, ...books[isbn]})
+                }
+            }
 
-  const matchedBooks = matchedKeys.map(key=>{
-    return {id:key, ...books[key]}
-  })
+            if(matchingBooks.length>0){
+                resolve(matchingBooks)
+            }else reject(new Error("No books found for this author"))
+        })
 
-  if(matchedBooks.length > 0){
-    res.send(matchedBooks)
-  }else{
-    res.status(402).json({message:"Book not found"})
-  }
+        const foundBooks = await getBooks
+        return res.status(200).json(foundBooks)
+    }catch(err){
+        return res.status(404).json({message:err.message})
+    }
+//   let author = req.params.author
+//   let bookKeys = Object.keys(books)
+//   const matchedKeys = bookKeys.filter(key =>{
+//     const book = books[key]
+//     return book.author.toLowerCase() === author.toLowerCase()
+//   })
+
+//   const matchedBooks = matchedKeys.map(key=>{
+//     return {id:key, ...books[key]}
+//   })
+
+//   if(matchedBooks.length > 0){
+//     res.send(matchedBooks)
+//   }else{
+//     res.status(402).json({message:"Book not found"})
+//   }
   
     
 
@@ -81,6 +127,16 @@ public_users.get('/title/:title',function (req, res) {
   
   
 });
+
+public_users.get('/title/:title', async function (req, res){
+    const title = req.params.title
+    try{
+        const response = await axios.get(`http://localhost:5000/title/${title}`)
+        return res.status(200).json(response.data)
+    }catch(err){
+        return res.status(500).json({message:err.message})
+    }
+})
 
 //  Get book review
 public_users.get('/review/:isbn',function (req, res) {
